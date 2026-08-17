@@ -71,6 +71,21 @@ const result = (callId, isError = false) => ({ type: 'tool/result', data: { mess
 }
 
 {
+  // `str_replace_editor` is a file tool, not a mutation tool: `view` is a read.
+  const state = fold([
+    call('a', 'str_replace_editor', { command: 'view', path: '/r/looked-at.py' }),
+    result('a'),
+    call('b', 'str_replace_editor', { command: 'str_replace', path: '/r/edited.py', old_str: 'x', new_str: 'y' }),
+    result('b'),
+    call('c', 'str_replace_editor', { command: 'create', path: '/r/made.py' }),
+    result('c'),
+    call('d', 'str_replace_editor', { command: 'insert', path: '/r/inserted.py', insert_line: 1 }),
+    result('d')
+  ])
+  assert.deepEqual(state.touched, ['/r/edited.py', '/r/made.py', '/r/inserted.py'], 'view is not an edit')
+}
+
+{
   // A duplicated path must not appear twice.
   const state = fold([call('a', 'edit', { file_path: '/r/x' }), result('a'), call('b', 'edit', { file_path: '/r/x' }), result('b')])
   assert.deepEqual(state.touched, ['/r/x'], 'first-touched order, no duplicates')

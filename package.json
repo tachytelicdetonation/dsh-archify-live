@@ -9,7 +9,8 @@
     ".": "./lib/index.js",
     "./focus": "./lib/focus.js",
     "./touched": "./lib/touched.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml"
   },
   "scripts": {
     "test": "node test/test.js"
@@ -22,6 +23,14 @@
     "@deepseek-ai/dsh-session-projection": "^0.1.0-rc.6"
   },
   "dsh": {
-    "plugin": true
-  }
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "lib/*.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ]
 }

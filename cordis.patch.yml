@@ -1,0 +1,14 @@
+# Bundle layer. One host-plane row.
+#
+# Host plane rather than an agent preset, for the reason dsh-session-projection states
+# outright: a unit whose empty value is indistinguishable from a real one belongs on the
+# host plane (which is why dsh-token-meter sits there). `{touched: []}` is exactly that —
+# an agent-plane registration would buy no per-session gating, since the key already
+# appears in every session's snapshot either way.
+#
+# It also avoids the alternative dsh-agent-presets warns about: adopting this through a
+# copied preset means "a snapshot that drifts", with no patch semantics at that layer to
+# express "standard plus one change". This file IS that patch layer.
+- insert:
+    - id: archify-touched
+      name: 'dsh-archify-live'

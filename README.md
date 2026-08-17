@@ -1,13 +1,21 @@
 # dsh-archify-live
 
-A dsh (DeepSeek Harness) plugin that answers one question, from evidence:
+A dsh (DeepSeek Harness) plugin that keeps a project's architecture diagram real, and
+keeps it moving.
 
-> **which files has this session actually edited?**
+Two halves:
 
-It registers a single session-projection unit, `archifyTouched`. The client half maps
-those paths onto an [archify](https://github.com/tt-a1i/archify) architecture IR and
-lights up the components they belong to, so a long agent run draws itself on the
-architecture diagram as it goes.
+1. **Get the diagram authored.** A system-prompt section makes the agent check for
+   `.dsh/architecture.json` before substantial work — building it from the code as it
+   actually is when the project already exists, designing it first when the project is
+   new, and updating it whenever a component is added, removed, or re-wired.
+2. **Show what the session is doing to it.** A session-projection unit, `archifyTouched`,
+   folds committed session events into the set of files the agent has actually edited.
+   The client half maps those onto [archify](https://github.com/tt-a1i/archify) component
+   ids, so a long agent run draws itself on the diagram as it goes.
+
+The point is observability. An agent that writes a thousand lines you did not read is
+legible as a picture long before it is legible as a diff.
 
 ## Why a projection and not a regenerated diagram
 
@@ -29,7 +37,7 @@ stale or the session is working outside the architecture, and both are worth kno
 |---|---|
 | `lib/touched.js` | the pure fold: session events → edited paths. Dependency-free. |
 | `lib/focus.js` | pure mapping: edited paths + IR → a `touched` guided view. |
-| `lib/index.js` | the Cordis plugin: registers the `archifyTouched` projection unit. |
+| `lib/index.js` | the Cordis plugin: the manifest prompt section + the `archifyTouched` projection unit. |
 | `test/test.js` | `npm test` — synthetic legs plus a replay of a real recorded session. |
 
 `lib/index.js` holds no I/O and no manifest reading on purpose: `apply` must be pure and
@@ -68,6 +76,7 @@ converts it to a `file:` URL before import, so a plugin outside the harness's ow
 
 - [x] `archifyTouched` session projection, replayed against real session logs
 - [x] path → component mapping via archify's `sources[]`, expressed as a guided view
+- [x] manifest prompt section — the agent authors and maintains the baseline itself
 - [ ] client half: a third `conversation.view` tab beside Chat and Trajectory
 - [ ] move the registration into a profile bundle, so it loads for every preset and the
       preset copy goes away

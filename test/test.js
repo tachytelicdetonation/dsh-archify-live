@@ -11,7 +11,35 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 import { pathMatches, touchedComponents, withTouchedView, VIEW_ID } from '../lib/focus.js'
+import { MANIFEST_PATH, apply as register } from '../lib/index.js'
 import { apply, fold, init } from '../lib/touched.js'
+
+// ── registration ────────────────────────────────────────────────────────────
+
+{
+  // Both seams are optional capabilities; a deployment composing only one must still load.
+  const seen = []
+  const ctx = (available) => ({
+    inject (deps, fn) {
+      if (!deps.every((d) => available.includes(d))) return
+      seen.push(deps[0])
+      fn({
+        systemPrompt: { section: (s) => seen.push(`section:${s.name}`) },
+        sessionProjections: { register: (d) => seen.push(`unit:${d.key}`) }
+      })
+    }
+  })
+
+  register(ctx(['systemPrompt', 'sessionProjections']))
+  assert.ok(seen.includes('section:archify:architecture-manifest'), 'contributes the manifest prompt section')
+  assert.ok(seen.includes('unit:archifyTouched'), 'contributes the projection unit')
+
+  seen.length = 0
+  register(ctx(['sessionProjections'])) // headless: no system prompt registry
+  assert.deepEqual(seen, ['sessionProjections', 'unit:archifyTouched'], 'survives a missing prompt seam')
+
+  assert.equal(MANIFEST_PATH, '.dsh/architecture.json')
+}
 
 // ── fold ────────────────────────────────────────────────────────────────────
 

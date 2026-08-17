@@ -131,6 +131,41 @@ const ir = {
   assert.equal(meta.views[0].id, VIEW_ID, 'the live view is never the one dropped')
 }
 
+// ── client bundle ───────────────────────────────────────────────────────────
+
+{
+  // Load the browser bundle in Node by standing in for the client module loader, so the
+  // duplicated matcher inside it cannot silently drift from lib/focus.js.
+  let client
+  globalThis.window = {
+    __ModuleLoader__: {
+      load: ({ id, factory }) => {
+        assert.equal(id, 'dsh-archify-live', 'bundle id must be the package name')
+        client = factory((name) => {
+          if (name === 'react') return { createElement: () => null, useState: () => [], useEffect: () => {} }
+          throw new Error(`client bundle required an unstubbed module: ${name}`)
+        })
+      }
+    }
+  }
+  await import('../lib/client.js')
+  delete globalThis.window
+
+  assert.deepEqual(client.inject, ['slots', 'connection'])
+  assert.equal(typeof client.apply, 'function')
+
+  // Same matcher semantics as the host-side source of truth.
+  for (const [file, source] of [['src/a/b.py', 'src/a'], ['src/a.py', 'src/a.py'], ['src/ab.py', 'src/a'], ['x', 'y']]) {
+    assert.equal(client.pathMatches(file, source), pathMatches(file, source), `client matcher disagrees on ${file} vs ${source}`)
+  }
+
+  // And the same attribution as touchedComponents, absolute paths included.
+  const absolute = ['/repo/ratify_suite/conftest.py', '/repo/notes/x.md', '/repo/stray.txt']
+  const { components, unmapped } = client.attribute(ir, absolute, '/repo')
+  assert.deepEqual(components.filter((c) => c.hits.length).map((c) => c.id), touchedComponents(ir, absolute, '/repo'))
+  assert.deepEqual(unmapped, ['stray.txt'], 'files no component claims are surfaced, not swallowed')
+}
+
 // ── recorded session ────────────────────────────────────────────────────────
 
 function sessionLogsNewestFirst () {

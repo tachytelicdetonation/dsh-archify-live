@@ -10,8 +10,7 @@ import { readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-import { pathMatches, touchedComponents, withTouchedView, VIEW_ID } from '../lib/focus.js'
-import { MANIFEST_PATH, apply as register } from '../lib/index.js'
+import { MANIFEST_PATH, embedify, apply as register } from '../lib/index.js'
 import { apply, fold, init } from '../lib/touched.js'
 
 // ── registration ────────────────────────────────────────────────────────────
@@ -91,11 +90,18 @@ const result = (callId, isError = false) => ({ type: 'tool/result', data: { mess
   assert.deepEqual(state.touched, ['/r/x'], 'first-touched order, no duplicates')
 }
 
-// ── mapping ─────────────────────────────────────────────────────────────────
+// ── embed chrome ────────────────────────────────────────────────────────────
 
-assert.ok(pathMatches('src/a/b.py', 'src/a'), 'a directory source claims files under it')
-assert.ok(pathMatches('src/a.py', 'src/a.py'), 'an exact file source matches itself')
-assert.ok(!pathMatches('src/ab.py', 'src/a'), 'prefix matching respects path segments')
+{
+  // archify's own bootstrap sets data-embed from `?embed=1`; a srcDoc document has no
+  // query string, so we set the attribute the CSS actually keys on. If archify ever
+  // renames it, the panel silently regrows a toolbar — hence asserting the exact string.
+  const page = '<!DOCTYPE html>\n<html lang="en" data-theme="dark">\n<head>'
+  assert.match(embedify(page), /<html data-embed="true" lang="en"/, 'sets the attribute the embed CSS keys on')
+  assert.equal(embedify('<html>no attrs</html>'), '<html>no attrs</html>', 'leaves an unexpected shape alone rather than corrupting it')
+}
+
+// ── client bundle ───────────────────────────────────────────────────────────
 
 const ir = {
   components: [
@@ -104,34 +110,6 @@ const ir = {
     { id: 'nosrc', type: 'service', label: 'Unmapped' }
   ]
 }
-
-{
-  const ids = touchedComponents(ir, ['/repo/ratify_suite/conftest.py', '/repo/README.md'], '/repo')
-  assert.deepEqual(ids, ['suite'], 'absolute paths resolve against the repo root; unclaimed files light nothing')
-}
-
-{
-  const { meta } = withTouchedView(ir, ['suite', 'docs'], { note: 'x'.repeat(200) })
-  const view = meta.views.find((v) => v.id === VIEW_ID)
-  assert.deepEqual(view.focus, ['suite', 'docs'])
-  assert.equal(view.note.length, 140, 'note is clipped to the schema maximum')
-}
-
-{
-  const withView = withTouchedView(ir, ['suite'])
-  const cleared = withTouchedView(withView, [])
-  assert.equal(cleared.meta.views, undefined, 'an empty focus set removes the view (schema: focus minItems 1)')
-}
-
-{
-  // The baseline may already spend the 5-view budget; ours leads and the oldest drops.
-  const busy = { ...ir, meta: { views: [1, 2, 3, 4, 5].map((n) => ({ id: `v${n}`, label: `v${n}`, focus: ['suite'] })) } }
-  const { meta } = withTouchedView(busy, ['docs'])
-  assert.equal(meta.views.length, 5, 'stays within maxItems')
-  assert.equal(meta.views[0].id, VIEW_ID, 'the live view is never the one dropped')
-}
-
-// ── client bundle ───────────────────────────────────────────────────────────
 
 {
   // Load the browser bundle in Node by standing in for the client module loader, so the
@@ -154,15 +132,16 @@ const ir = {
   assert.deepEqual(client.inject, ['slots', 'connection'])
   assert.equal(typeof client.apply, 'function')
 
-  // Same matcher semantics as the host-side source of truth.
-  for (const [file, source] of [['src/a/b.py', 'src/a'], ['src/a.py', 'src/a.py'], ['src/ab.py', 'src/a'], ['x', 'y']]) {
-    assert.equal(client.pathMatches(file, source), pathMatches(file, source), `client matcher disagrees on ${file} vs ${source}`)
-  }
+  assert.ok(client.pathMatches('src/a/b.py', 'src/a'), 'a directory source claims files under it')
+  assert.ok(client.pathMatches('src/a.py', 'src/a.py'), 'an exact file source matches itself')
+  assert.ok(!client.pathMatches('src/ab.py', 'src/a'), 'prefix matching respects path segments')
 
-  // And the same attribution as touchedComponents, absolute paths included.
+  // Attribution over absolute paths, which is what the projection actually reports.
   const absolute = ['/repo/ratify_suite/conftest.py', '/repo/notes/x.md', '/repo/stray.txt']
   const { components, unmapped } = client.attribute(ir, absolute, '/repo')
-  assert.deepEqual(components.filter((c) => c.hits.length).map((c) => c.id), touchedComponents(ir, absolute, '/repo'))
+  assert.deepEqual(components.filter((c) => c.hits.length).map((c) => c.id), ['suite', 'docs'],
+    'absolute paths resolve against the repo root')
+  assert.deepEqual(components.find((c) => c.id === 'nosrc').hits, [], 'a component with no sources never lights')
   assert.deepEqual(unmapped, ['stray.txt'], 'files no component claims are surfaced, not swallowed')
 }
 

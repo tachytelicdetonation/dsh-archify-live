@@ -7,7 +7,6 @@
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
-    "./focus": "./lib/focus.js",
     "./touched": "./lib/touched.js",
     "./package.json": "./package.json",
     "./cordis.patch.yml": "./cordis.patch.yml",

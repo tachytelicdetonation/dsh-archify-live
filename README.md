@@ -23,10 +23,15 @@ The obvious design — have the model redraw the architecture after each todo �
 nothing. A model redrawing its own work confirms its own story, and the diff is empty by
 construction.
 
-So the baseline IR is authored **once** and frozen. Only the *focus set* moves, and it is
+So the baseline IR is authored **once** and frozen. Only the *highlight* moves, and it is
 derived from `tool/call` + `tool/result` pairs in the committed session log: a path counts
 only when a mutation tool named it and the result did not come back `isError`. Reads,
 greps and failed edits contribute nothing. Same vocabulary dsh's own deliverables row uses.
+
+The highlight lives in the tab rather than in the diagram for a concrete reason: the
+rendered page has no `postMessage` listener, and its `#focus=` deep link takes a single
+node id. A live multi-component highlight cannot be pushed into a frozen artifact — only
+re-rendered in, which is the move this design refuses.
 
 Files no component claims are surfaced rather than swallowed — either the manifest is
 stale or the session is working outside the architecture, and both are worth knowing.
@@ -36,8 +41,8 @@ stale or the session is working outside the architecture, and both are worth kno
 | file | role |
 |---|---|
 | `lib/touched.js` | the pure fold: session events → edited paths. Dependency-free. |
-| `lib/focus.js` | pure mapping: edited paths + IR → a `touched` guided view. |
-| `lib/index.js` | the Cordis plugin: the manifest prompt section + the `archifyTouched` projection unit. |
+| `lib/index.js` | the Cordis plugin: manifest prompt section, `archifyTouched` projection unit, manifest RPC. |
+| `lib/client.js` | the browser half: the Architecture tab, and the only implementation of path → component attribution. |
 | `test/test.js` | `npm test` — synthetic legs plus a replay of a real recorded session. |
 
 `lib/index.js` holds no I/O and no manifest reading on purpose: `apply` must be pure and
@@ -75,11 +80,32 @@ converts it to a `file:` URL before import, so a plugin outside the harness's ow
 ## Status
 
 - [x] `archifyTouched` session projection, replayed against real session logs
-- [x] path → component mapping via archify's `sources[]`, expressed as a guided view
+- [x] path → component mapping via archify's `sources[]`
 - [x] manifest prompt section — the agent authors and maintains the baseline itself
-- [ ] client half: a third `conversation.view` tab beside Chat and Trajectory
-- [ ] move the registration into a profile bundle, so it loads for every preset and the
-      preset copy goes away
+- [x] client half: a third `conversation.view` tab beside Chat and Trajectory
+- [x] registration in a profile bundle, so it loads for every preset
+
+## Rendering: strip `sources` first
+
+archify reads `components[].sources` as a claim about a **pinned public GitHub revision**.
+Their mere presence flips `verifyRepositoryEvidence` into mandatory mode, which then
+hard-errors unless the manifest carries `meta.repository` with a `https://github.com/` URL
+and a full 40-character SHA, *and* a matching local checkout is passed as `--repo-root`.
+That is unsatisfiable for a private or local project, and the SHA goes stale every commit
+even for a public one.
+
+The trap is the error's own advice — `supportedFixes` says "remove component sources" — and
+sources are exactly what attributes an edit to a component. So the manifest keeps them and
+the render strips them:
+
+```bash
+jq 'del(.components[].sources)' .dsh/architecture.json > /tmp/arch-render.json
+node bin/archify.mjs deliver architecture /tmp/arch-render.json .dsh/architecture.html \
+  --quality showcase --json
+```
+
+The prompt section tells the agent this directly, because the failure is otherwise silent:
+a compliant agent deletes the sources and the tab goes permanently dark.
 
 ## Known limits
 

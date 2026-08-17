@@ -36,6 +36,27 @@ re-rendered in, which is the move this design refuses.
 Files no component claims are surfaced rather than swallowed — either the manifest is
 stale or the session is working outside the architecture, and both are worth knowing.
 
+So is the opposite failure: a component whose `sources` path was renamed away looks
+exactly like a component nobody touched. The tab stats every source path and marks the
+dead ones, which is the only thing pulling the manifest back into sync — a frozen
+baseline otherwise rots while continuing to look healthy.
+
+## The rendered page is transformed before it is shown
+
+Three string edits on the way to the iframe, each pinned by a test to something archify
+actually ships, so an upstream rename fails loudly instead of quietly degrading:
+
+- **`data-embed="true"`** on `<html>` — archify's own panel chrome, normally switched on
+  by `?embed=1`, which a `srcDoc` document cannot have.
+- **Theme pinned to dsh's.** The page resolves its theme from `prefers-color-scheme`,
+  i.e. the OS — so a dark dsh on a light Mac renders a light diagram in a dark app.
+  Setting `data-theme` does *not* work: the page's own bootstrap overwrites it at load.
+  Both of its resolution sites bottom out in one `matchMedia(...)` expression, so that
+  expression's value is replaced instead. Re-derived on `theme/change`.
+- **Height from the diagram's own aspect ratio.** Embed mode sets `overflow: hidden` and
+  the template has no wheel zoom, so anything past the frame's height is not scrollable —
+  it is unreachable. A fixed-height frame silently amputates the diagram.
+
 ## Layout
 
 | file | role |

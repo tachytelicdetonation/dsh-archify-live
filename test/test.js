@@ -10,7 +10,7 @@ import { readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-import { MANIFEST_PATH, embedify, apply as register } from '../lib/index.js'
+import { MANIFEST_PATH, apply as register } from '../lib/index.js'
 import { apply, fold, init } from '../lib/touched.js'
 
 // ── registration ────────────────────────────────────────────────────────────
@@ -90,17 +90,6 @@ const result = (callId, isError = false) => ({ type: 'tool/result', data: { mess
   assert.deepEqual(state.touched, ['/r/x'], 'first-touched order, no duplicates')
 }
 
-// ── embed chrome ────────────────────────────────────────────────────────────
-
-{
-  // archify's own bootstrap sets data-embed from `?embed=1`; a srcDoc document has no
-  // query string, so we set the attribute the CSS actually keys on. If archify ever
-  // renames it, the panel silently regrows a toolbar — hence asserting the exact string.
-  const page = '<!DOCTYPE html>\n<html lang="en" data-theme="dark">\n<head>'
-  assert.match(embedify(page), /<html data-embed="true" lang="en"/, 'sets the attribute the embed CSS keys on')
-  assert.equal(embedify('<html>no attrs</html>'), '<html>no attrs</html>', 'leaves an unexpected shape alone rather than corrupting it')
-}
-
 // ── client bundle ───────────────────────────────────────────────────────────
 
 const ir = {
@@ -129,8 +118,31 @@ const ir = {
   await import('../lib/client.js')
   delete globalThis.window
 
-  assert.deepEqual(client.inject, ['slots', 'connection'])
+  assert.deepEqual(client.inject, ['slots', 'connection', 'theme'])
   assert.equal(typeof client.apply, 'function')
+
+  // The rendered page is transformed three ways before it reaches the iframe. Each of
+  // these is pinned to a string archify actually ships, so an upstream rename fails here
+  // rather than silently degrading the panel.
+  {
+    const page = '<!DOCTYPE html>\n<html lang="en" data-theme="dark">\n<head>'
+    assert.match(client.embedify(page), /<html data-embed="true" lang="en"/, 'sets the attribute the embed CSS keys on')
+    assert.equal(client.embedify('<html>x</html>'), '<html>x</html>', 'leaves an unexpected shape alone rather than corrupting it')
+  }
+  {
+    // Both of archify's theme-resolution sites end in this exact expression; replacing
+    // its value is the only thing that survives its own bootstrap overwriting the attribute.
+    const probe = "theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';"
+    assert.equal(client.themify(probe, 'dark'), "theme = 'dark';", 'pins the scheme dsh is actually using')
+    assert.equal(client.themify(probe, 'light'), "theme = 'light';")
+    assert.ok(!client.themify(probe, 'dark').includes('matchMedia'), 'no OS fallback survives')
+  }
+  {
+    // Embed mode sets overflow:hidden and there is no wheel zoom, so a too-short frame
+    // amputates the diagram. The frame must take its height from the diagram's own ratio.
+    assert.equal(client.frameAspect('<svg viewBox="0 0 1040 648">'), '1040 / 712', 'aspect from viewBox, plus legend allowance')
+    assert.equal(client.frameAspect('<svg>'), null, 'no viewBox means fall back rather than guess')
+  }
 
   assert.ok(client.pathMatches('src/a/b.py', 'src/a'), 'a directory source claims files under it')
   assert.ok(client.pathMatches('src/a.py', 'src/a.py'), 'an exact file source matches itself')
@@ -143,6 +155,12 @@ const ir = {
     'absolute paths resolve against the repo root')
   assert.deepEqual(components.find((c) => c.id === 'nosrc').hits, [], 'a component with no sources never lights')
   assert.deepEqual(unmapped, ['stray.txt'], 'files no component claims are surfaced, not swallowed')
+
+  // A component whose source path no longer exists is indistinguishable from an untouched
+  // one unless it is called out — that silence is how the manifest rots unnoticed.
+  const withDead = client.attribute(ir, absolute, '/repo', { docs: ['notes'] })
+  assert.deepEqual(withDead.components.find((c) => c.id === 'docs').dead, ['notes'], 'dead sources reach the row')
+  assert.deepEqual(withDead.components.find((c) => c.id === 'suite').dead, [], 'live components carry no dead paths')
 }
 
 // ── recorded session ────────────────────────────────────────────────────────
